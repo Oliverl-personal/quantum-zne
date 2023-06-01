@@ -1,2 +1,2 @@
 # quantum-zne
-Quantum Error Mitigation via Zero-noise Extrapolation
+Playing with quantum error mitigation via zero-noise extrapolation (ZNE)
