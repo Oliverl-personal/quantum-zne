@@ -9,19 +9,23 @@ from qiskit_aer import QasmSimulator
 from qiskit_aer.noise import NoiseModel
 
 @qml.qfunc_transform
-def unitary_folding(tape, scale_factor): 
-  for op in tape.operations:
-    qml.apply(op)
-  
+def local_folding(circuit, scale_factor): 
   num_folds = math.round((scale_factor - 1.0) / 2.0)
   
-  for _ in range(int(num_folds)):
-    for op in tape.operations[::-1]:
-      op.adjoint()
-    for op in tape.operations: 
+  if int(num_folds) == 0:
+    for op in circuit.operations:
       qml.apply(op)
+  else: 
+    for op in circuit.operations:
+      for _ in range(int(num_folds)):
+        for i in range(3): # populate 3 gates per gate to allow adjoint in the middle
+          if i == 2:
+            qml.adjoint(op)
+            qml.apply(op)
+          else:
+            qml.apply(op)
   
-  for m in tape.measurements:
+  for m in circuit.measurements:
     qml.apply(m)
 
 def fit_zne(scale_factors , energies):
@@ -73,7 +77,7 @@ if __name__ == "__main__":
   )
   noisy_dev.set_transpile_args(**{"optimization_level" : 0})
 
-  @zne(unitary_folding , [1.0, 3.0, 5.0, 7.0, 9.0])
+  @zne(local_folding , [1.0, 3.0, 5.0, 7.0, 9.0])
   @qml.qnode(noisy_dev , diff_method='parameter-shift') 
   def circuit(params):
     qml.RX(params[0], wires=0) 
@@ -83,9 +87,12 @@ if __name__ == "__main__":
     qml.RZ(params[2], wires=2) 
     qml.CNOT(wires=[2, 0])
     return qml.expval(H)
+  
+
 
   params = np.array([0.5, 0.1, -0.2], requires_grad=True)
   print(circuit(params))
+  print("Check circuit printout transform: ", qml.draw(circuit)(params))
 
   print(qml.grad(circuit)(params))
 
