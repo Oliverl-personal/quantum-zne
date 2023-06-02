@@ -9,15 +9,37 @@ from qiskit_aer import QasmSimulator
 from qiskit_aer.noise import NoiseModel
 
 @qml.qfunc_transform
-def local_folding(circuit, scale_factor): 
-  num_folds = math.round((scale_factor - 1.0) / 2.0)
+def global_folding(circuit, scale_factor):
+  num_folds = calc_num_folds(scale_factor)
   
-  if int(num_folds) == 0:
+  if num_folds == 0:
+    for op in circuit.operations:
+      qml.apply(op)
+  else:
+    for _ in range(num_folds):
+      for i in range(3): # populate 3 gates per gate to allow adjoint in the middle
+        for op in circuit.operations:
+            print(op)
+            if i == 2:
+              qml.adjoint(op)
+              qml.apply(op)
+              print("in 2")
+            else:
+              qml.apply(op)
+  
+  for m in circuit.measurements:
+    qml.apply(m)
+
+@qml.qfunc_transform
+def local_folding(circuit, scale_factor): 
+  num_folds = calc_num_folds(scale_factor)
+  
+  if num_folds == 0:
     for op in circuit.operations:
       qml.apply(op)
   else: 
     for op in circuit.operations:
-      for _ in range(int(num_folds)):
+      for _ in range(num_folds):
         for i in range(3): # populate 3 gates per gate to allow adjoint in the middle
           if i == 2:
             qml.adjoint(op)
@@ -27,6 +49,10 @@ def local_folding(circuit, scale_factor):
   
   for m in circuit.measurements:
     qml.apply(m)
+
+def calc_num_folds(scale_factor):
+  num_folds = int(math.round((scale_factor - 1.0) / 2.0))
+  return num_folds
 
 def fit_zne(scale_factors , energies):
   scale_factors = math.stack(scale_factors) 
@@ -77,22 +103,24 @@ if __name__ == "__main__":
   )
   noisy_dev.set_transpile_args(**{"optimization_level" : 0})
 
-  @zne(local_folding , [1.0, 3.0, 5.0, 7.0, 9.0])
+  @zne(global_folding , [1.0, 3.0, 5.0, 7.0, 9.0])
   @qml.qnode(noisy_dev , diff_method='parameter-shift') 
   def circuit(params):
     qml.RX(params[0], wires=0) 
-    qml.CNOT(wires=[0, 1])
+    qml.RY(params[0], wires=0) 
+    # qml.CNOT(wires=[0, 1])
     qml.RY(params[1], wires=1) 
-    qml.CNOT(wires=[1, 2])
+    # qml.CNOT(wires=[1, 2])
     qml.RZ(params[2], wires=2) 
-    qml.CNOT(wires=[2, 0])
+    # qml.CNOT(wires=[2, 0])
     return qml.expval(H)
   
 
 
   params = np.array([0.5, 0.1, -0.2], requires_grad=True)
   print(circuit(params))
-  print("Check circuit printout transform: ", qml.draw(circuit)(params))
+  print("Check circuit printout transform: \n")
+  print(qml.draw(circuit)(params))
 
-  print(qml.grad(circuit)(params))
+  # print(qml.grad(circuit)(params))
 
